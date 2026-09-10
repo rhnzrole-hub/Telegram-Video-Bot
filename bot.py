@@ -6,7 +6,6 @@ from aiogram.filters import Command
 from handlers import video, audio, actions, subtitle, metadata, progress
 
 from config import BOT_TOKEN
-# Barcha handlerlar shu yerda chaqiriladi (metadata ham bor)
 from handlers import video, audio, actions, subtitle, metadata
 
 logging.basicConfig(level=logging.INFO)
@@ -14,12 +13,11 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Botga barcha routerlar (tugma va xabar ushlagichlar) ulanmoqda:
 dp.include_router(video.router)
 dp.include_router(actions.router)
 dp.include_router(audio.router)
 dp.include_router(subtitle.router)
-dp.include_router(metadata.router) # MANA SHU QATOR ISHLASH UCHUN JUDA MUHIM
+dp.include_router(metadata.router)
 dp.include_router(progress.router)
 
 @dp.message(Command("start"))
