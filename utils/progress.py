@@ -4,7 +4,6 @@ import os
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramBadRequest
 
-# Bekor qilingan vazifalarni eslab qolish uchun global xotira
 CANCEL_TASKS = {}
 
 def get_progress_keyboard(task_id: str):
@@ -49,7 +48,6 @@ class ProgressTracker:
             raise Exception("TaskCancelled")
             
         now = time.time()
-        # API limitga tushmaslik uchun xabarni har 5 soniyada yangilaymiz
         if force or (now - self.last_update_time > 5):
             self.last_update_time = now
             text = format_progress_bar(self.filename, self.action, current, total, self.start_time)
@@ -60,7 +58,7 @@ class ProgressTracker:
                     parse_mode="Markdown"
                 )
             except TelegramBadRequest:
-                pass # Agar matn o'zgarmagan bo'lsa, xatoni yashiramiz
+                pass
 
     async def update_ffmpeg(self, current_sec, total_sec, force=False):
         if CANCEL_TASKS.get(self.task_id):
@@ -89,7 +87,6 @@ async def download_with_progress(bot, file_id, destination, tracker):
         async with session.get(url) as response:
             with open(destination, 'wb') as f:
                 read_bytes = 0
-                # Faylni qismlab (1MB dan) o'qiymiz
                 async for chunk in response.content.iter_chunked(1024 * 1024): 
                     if CANCEL_TASKS.get(tracker.task_id):
                         raise Exception("TaskCancelled")
@@ -123,7 +120,6 @@ def format_ffmpeg_progress(filename, action, current_sec, total_sec, start_time)
     bar = "■" * filled + "□" * (10 - filled)
     
     elapsed_time = time.time() - start_time
-    # Tezlik (x) - 1 soniyada video necha soniyaga oldinga siljiyapti
     speed = current_sec / elapsed_time if elapsed_time > 0 else 0
     time_left = (total_sec - current_sec) / speed if speed > 0 else 0
         

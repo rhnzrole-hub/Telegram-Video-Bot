@@ -1,7 +1,6 @@
 import os
 
 def remove_temp_files(*filepaths):
-    """ Berilgan fayl yo'llarini kompyuterdan xavfsiz o'chiradi """
     for path in filepaths:
         if path and os.path.exists(path):
             try:
