@@ -111,7 +111,7 @@ async def action_letterbox(callback: types.CallbackQuery, bot: Bot, state: FSMCo
 
     status_msg = await callback.message.edit_text("Video tayyorlanmoqda ⏳...")
     task_id = str(uuid.uuid4())[:8]
-    output_path = None # O'chirishda xato bermasligi uchun oldindan e'lon qilamiz
+    output_path = None
 
     try:
         video_path = await download_video_if_needed(bot, video_file_id, video_path, state, status_msg, task_id)
@@ -148,7 +148,5 @@ async def action_letterbox(callback: types.CallbackQuery, bot: Bot, state: FSMCo
             await status_msg.edit_text(f"Xatolik yuz berdi: {e}")
             
     finally:
-        # ASOSIY TOZALASH QISMI:
-        # Nima bo'lishidan qat'i nazar, xotirada qolib ketmasligi uchun o'chiramiz
         remove_temp_files(video_path, output_path)
         await state.clear()

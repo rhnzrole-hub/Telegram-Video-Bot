@@ -49,6 +49,5 @@ async def handle_audio(message: types.Message, bot: Bot, state: FSMContext):
             await status_msg.edit_text(f"Xatolik: {e}")
             
     finally:
-        # Hamma fayllarni tozalaymiz
         remove_temp_files(video_path, audio_path, output_path)
         await state.clear()
