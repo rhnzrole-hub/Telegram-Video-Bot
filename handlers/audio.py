@@ -37,8 +37,8 @@ async def handle_audio(message: types.Message, bot: Bot, state: FSMContext):
         if success:
             upload_tracker = ProgressTracker(status_msg, "Yuklanmoqda (Upload)", "video_with_audio.mp4", upload_task_id)
             result_file = ProgressFSInputFile(output_path, upload_tracker)
-            await message.answer_video(video=result_file, caption="Sizning videongiz tayyor! Yangi audio asosiy qilib belgilandi, eskisi saqlab qolindi.")
             await status_msg.delete()
+            await message.answer_document(document=result_file, caption="Sizning videongiz tayyor! Yangi audio asosiy qilib belgilandi, eskisi saqlab qolindi.")
         else:
             await status_msg.edit_text("Birlashtirishda xatolik yuz berdi ❌")
             
