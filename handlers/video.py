@@ -19,8 +19,8 @@ async def handle_video(message: types.Message, state: FSMContext):
     video_obj = message.video if message.video else message.document
     file_name = video_obj.file_name if video_obj.file_name else "video.mp4"
 
-    if video_obj.file_size and video_obj.file_size > 20 * 1024 * 1024:
-        await message.answer("Iltimos, 20 MB dan kichik video yuboring.")
+    if video_obj.file_size and video_obj.file_size > 2000 * 1024 * 1024:
+        await message.answer("Iltimos, 2 GB dan kichik video yuboring.")
         return
 
     await state.clear()

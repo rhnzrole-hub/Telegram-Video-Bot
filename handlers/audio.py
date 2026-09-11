@@ -13,8 +13,8 @@ router = Router()
 async def handle_audio(message: types.Message, bot: Bot, state: FSMContext):
     audio_obj = message.audio or message.voice or message.document
     
-    if audio_obj.file_size and audio_obj.file_size > 20 * 1024 * 1024:
-        return await message.answer("Iltimos, 20 MB dan kichik audio yuboring.")
+    if audio_obj.file_size and audio_obj.file_size > 2000 * 1024 * 1024:
+        return await message.answer("Iltimos, 2 GB dan kichik audio yuboring.")
 
     status_msg = await message.answer("Audio yuklab olinmoqda ⏳...")
     
