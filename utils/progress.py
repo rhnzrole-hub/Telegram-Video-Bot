@@ -1,7 +1,7 @@
 import time
 import aiohttp
 import os
-from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramBadRequest
 
 CANCEL_TASKS = {}
@@ -52,11 +52,7 @@ class ProgressTracker:
             self.last_update_time = now
             text = format_progress_bar(self.filename, self.action, current, total, self.start_time)
             try:
-                await self.message.edit_text(
-                    text, 
-                    reply_markup=get_progress_keyboard(self.task_id),
-                    parse_mode="Markdown"
-                )
+                await self.message.edit_text(text, reply_markup=get_progress_keyboard(self.task_id), parse_mode="Markdown")
             except TelegramBadRequest:
                 pass
 
@@ -69,48 +65,38 @@ class ProgressTracker:
             self.last_update_time = now
             text = format_ffmpeg_progress(self.filename, self.action, current_sec, total_sec, self.start_time)
             try:
-                await self.message.edit_text(
-                    text, 
-                    reply_markup=get_progress_keyboard(self.task_id),
-                    parse_mode="Markdown"
-                )
+                await self.message.edit_text(text, reply_markup=get_progress_keyboard(self.task_id), parse_mode="Markdown")
             except TelegramBadRequest:
                 pass
 
 async def download_with_progress(bot, file_id, destination, tracker):
-    """ Telegramdan progress bilan fayl yuklash uchun maxsus funksiya """
     file = await bot.get_file(file_id)
-    url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
+    file_path = file.file_path
     total_size = file.file_size
     
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            with open(destination, 'wb') as f:
-                read_bytes = 0
-                async for chunk in response.content.iter_chunked(1024 * 1024): 
-                    if CANCEL_TASKS.get(tracker.task_id):
-                        raise Exception("TaskCancelled")
-                    f.write(chunk)
-                    read_bytes += len(chunk)
-                    await tracker.update(read_bytes, total_size)
-    await tracker.update(total_size, total_size, force=True)
-
-class ProgressFSInputFile(FSInputFile):
-    """ Telegramga progress bilan fayl yuklash uchun maxsus FSInputFile """
-    def __init__(self, path, tracker):
-        super().__init__(path, chunk_size=1024 * 1024)
-        self.tracker = tracker
-        self.total_size = os.path.getsize(path)
-
-    async def read(self, bot):
-        read_bytes = 0
-        async for chunk in super().read(bot):
-            if CANCEL_TASKS.get(self.tracker.task_id):
-                raise Exception("TaskCancelled")
-            read_bytes += len(chunk)
-            await self.tracker.update(read_bytes, self.total_size)
-            yield chunk
-
+    if os.path.exists(file_path):
+        with open(file_path, 'rb') as src, open(destination, 'wb') as dst:
+            read_bytes = 0
+            while True:
+                if CANCEL_TASKS.get(tracker.task_id): raise Exception("TaskCancelled")
+                chunk = src.read(1024 * 1024)
+                if not chunk: break
+                dst.write(chunk)
+                read_bytes += len(chunk)
+                await tracker.update(read_bytes, total_size)
+        await tracker.update(total_size, total_size, force=True)
+    else:
+        url = f"https://api.telegram.org/file/bot{bot.token}/{file_path}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                with open(destination, 'wb') as f:
+                    read_bytes = 0
+                    async for chunk in response.content.iter_chunked(1024 * 1024): 
+                        if CANCEL_TASKS.get(tracker.task_id): raise Exception("TaskCancelled")
+                        f.write(chunk)
+                        read_bytes += len(chunk)
+                        await tracker.update(read_bytes, total_size)
+        await tracker.update(total_size, total_size, force=True)
 
 def format_ffmpeg_progress(filename, action, current_sec, total_sec, start_time):
     if total_sec == 0: total_sec = 1
@@ -129,9 +115,5 @@ def format_ffmpeg_progress(filename, action, current_sec, total_sec, start_time)
         if h > 0: return f"{h}h {m}m {s}s"
         return f"{m}m {s}s"
     
-    text = f"**{action}**: `{filename}`\n\n"
-    text += f"[{bar}] {percent:.2f}%\n\n"
-    text += f"=> Vaqt: {fmt_time(current_sec)} / {fmt_time(total_sec)}\n"
-    text += f"=> Tezlik: {speed:.2f}x\n"
-    text += f"=> Qolgan vaqt: {fmt_time(time_left)}"
+    text = f"**{action}**: `{filename}`\n\n[{bar}] {percent:.2f}%\n\n=> Vaqt: {fmt_time(current_sec)} / {fmt_time(total_sec)}\n=> Tezlik: {speed:.2f}x\n=> Qolgan vaqt: {fmt_time(time_left)}"
     return text

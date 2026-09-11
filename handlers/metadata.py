@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from states import ProcessState
 from keyboards import get_streams_keyboard
 from services.ffmpeg_service import apply_multiple_metadata, get_video_streams
-from utils.progress import ProgressTracker, ProgressFSInputFile, CANCEL_TASKS
+from utils.progress import CANCEL_TASKS
 from utils.cleanup import remove_temp_files
 
 router = Router()
@@ -21,28 +21,24 @@ async def finish_metadata(callback: types.CallbackQuery, state: FSMContext):
         
     status_msg = await callback.message.edit_text("Barcha o'zgarishlar bittada qo'llanilmoqda ⚙️...")
     output_path = os.path.join("temp", f"{uuid.uuid4()}_meta.mkv")
-    upload_task_id = str(uuid.uuid4())[:8]
     
     try:
         success = await apply_multiple_metadata(video_path, changes, output_path)
         
         if success:
-            upload_tracker = ProgressTracker(status_msg, "Yuklanmoqda (Upload)", "metadata_ready.mkv", upload_task_id)
-            result = ProgressFSInputFile(output_path, upload_tracker)
+            await status_msg.edit_text("Fayl Telegramga yuklanmoqda 🚀 (Local API)...")
+            result = types.FSInputFile(output_path)
             await callback.message.answer_document(document=result, caption="Barcha metadata o'zgarishlari muvaffaqiyatli saqlandi! ✅")
             await status_msg.delete()
         else:
             await status_msg.edit_text("Xatolik yuz berdi ❌")
             
     except Exception as e:
-        if CANCEL_TASKS.get(upload_task_id): 
-            await status_msg.edit_text("Yuklash bekor qilindi ❌")
-        else: 
-            await status_msg.edit_text(f"Yuklashda xatolik: {e}")
+        await status_msg.edit_text(f"Yuklashda xatolik: {e}")
             
     finally:
-        remove_temp_files(video_path, output_path)
-        await state.clear()
+        remove_temp_files(output_path)
+        await state.set_state(None)
 
 @router.callback_query(F.data.startswith("stream_"))
 async def select_stream(callback: types.CallbackQuery, state: FSMContext):

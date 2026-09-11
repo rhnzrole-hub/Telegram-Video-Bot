@@ -10,18 +10,6 @@ def get_main_menu():
     ])
     return keyboard
 
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-def get_main_menu():
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎵 Videoga Audio qo'shish", callback_data="action_add_audio")],
-        [InlineKeyboardButton(text="💬 Subtitr qo'shish", callback_data="action_add_subtitle")],
-        [InlineKeyboardButton(text="📝 Metadata Editor", callback_data="action_edit_metadata")],
-        [InlineKeyboardButton(text="🎞 Letterboxing (16:9)", callback_data="action_letterbox")],
-        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="action_cancel")]
-    ])
-    return keyboard
-
 def get_streams_keyboard(streams: list, changes: dict = None):
     if changes is None:
         changes = {}
@@ -36,7 +24,6 @@ def get_streams_keyboard(streams: list, changes: dict = None):
         title = changes.get(index, {}).get('title', tags.get('title', 'N/A'))
         
         icon = "🎵 Audio" if codec_type == "audio" else "💬 Subtitr"
-        
         changed_mark = "✏️ " if index in changes else ""
         btn_text = f"{changed_mark}{icon} #{index} | Til: {lang} | Nom: {title}"
         

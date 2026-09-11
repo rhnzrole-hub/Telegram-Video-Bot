@@ -5,15 +5,15 @@ from aiogram.fsm.context import FSMContext
 from states import ProcessState
 from keyboards import get_main_menu, get_streams_keyboard
 from services.ffmpeg_service import get_video_streams, apply_letterbox, get_video_duration
-from utils.progress import ProgressTracker, download_with_progress, ProgressFSInputFile, CANCEL_TASKS
+from utils.progress import ProgressTracker, download_with_progress, CANCEL_TASKS
 from utils.cleanup import remove_temp_files
 
 router = Router()
 
 @router.callback_query(F.data == "action_cancel")
 async def action_cancel(callback: types.CallbackQuery, state: FSMContext):
-    await state.clear()
-    await callback.message.edit_text("Amal bekor qilindi ❌. Boshqa video yuborishingiz mumkin.")
+    await state.set_state(None)
+    await callback.message.edit_text("Amal bekor qilindi ❌. Boshqa amalni tanlashingiz yoki yangi video yuborishingiz mumkin.")
     await callback.answer()
 
 async def download_video_if_needed(bot, video_file_id, video_path, state, status_msg, task_id):
@@ -41,10 +41,12 @@ async def action_add_audio(callback: types.CallbackQuery, bot: Bot, state: FSMCo
     try:
         await download_video_if_needed(bot, video_file_id, video_path, state, status_msg, task_id)
         await state.set_state(ProcessState.waiting_for_audio)
-        await status_msg.edit_text("Video yuklab olindi! ✅\n\nEndi menga bu videoga qo'shmoqchi bo'lgan **AUDIO** faylini yuboring.")
+        await status_msg.edit_text("Video tayyor! ✅\n\nEndi menga bu videoga qo'shmoqchi bo'lgan **AUDIO** faylini yuboring.")
     except Exception as e:
         if CANCEL_TASKS.get(task_id): await status_msg.edit_text("Yuklab olish bekor qilindi ❌")
         else: await status_msg.edit_text(f"Yuklab olishda xatolik: {e}")
+    finally:
+        CANCEL_TASKS.pop(task_id, None)
 
 @router.callback_query(F.data == "action_add_subtitle")
 async def action_add_subtitle(callback: types.CallbackQuery, bot: Bot, state: FSMContext):
@@ -62,10 +64,12 @@ async def action_add_subtitle(callback: types.CallbackQuery, bot: Bot, state: FS
     try:
         await download_video_if_needed(bot, video_file_id, video_path, state, status_msg, task_id)
         await state.set_state(ProcessState.waiting_for_subtitle)
-        await status_msg.edit_text("Video yuklab olindi! ✅\n\nEndi menga **.srt** yoki **.ass** formatidagi Subtitr faylini yuboring.")
+        await status_msg.edit_text("Video tayyor! ✅\n\nEndi menga **.srt** yoki **.ass** formatidagi Subtitr faylini yuboring.")
     except Exception as e:
         if CANCEL_TASKS.get(task_id): await status_msg.edit_text("Yuklab olish bekor qilindi ❌")
         else: await status_msg.edit_text(f"Yuklab olishda xatolik: {e}")
+    finally:
+        CANCEL_TASKS.pop(task_id, None)
 
 @router.callback_query(F.data == "action_edit_metadata")
 async def action_edit_metadata(callback: types.CallbackQuery, bot: Bot, state: FSMContext):
@@ -85,8 +89,10 @@ async def action_edit_metadata(callback: types.CallbackQuery, bot: Bot, state: F
     except Exception as e:
         if CANCEL_TASKS.get(task_id): await status_msg.edit_text("Yuklab olish bekor qilindi ❌")
         else: await status_msg.edit_text(f"Yuklab olishda xatolik: {e}")
+        CANCEL_TASKS.pop(task_id, None)
         return
 
+    CANCEL_TASKS.pop(task_id, None)
     streams = await get_video_streams(video_path)
     target_streams = [s for s in streams if s.get("codec_type") in ["audio", "subtitle"]]
     
@@ -137,10 +143,8 @@ async def process_trim_time(message: types.Message, bot: Bot, state: FSMContext)
         
         def parse_time(t_str):
             parts = t_str.strip().split(":")
-            if len(parts) == 3:
-                return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
-            elif len(parts) == 2:
-                return float(parts[0]) * 60 + float(parts[1])
+            if len(parts) == 3: return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+            elif len(parts) == 2: return float(parts[0]) * 60 + float(parts[1])
             return float(parts[0])
         
         start_sec = parse_time(start_str)
@@ -171,7 +175,6 @@ async def start_letterbox_task(status_msg: types.Message, bot: Bot, state: FSMCo
 
     try:
         video_path = await download_video_if_needed(bot, video_file_id, video_path, state, status_msg, task_id)
-        
         await status_msg.edit_text("Videoning davomiyligi aniqlanmoqda ⏳...")
         
         if duration is None:
@@ -179,34 +182,25 @@ async def start_letterbox_task(status_msg: types.Message, bot: Bot, state: FSMCo
             
         ffmpeg_task_id = str(uuid.uuid4())[:8]
         ffmpeg_tracker = ProgressTracker(status_msg, "Qayta ishlanmoqda (Letterbox)", "video.mkv", ffmpeg_task_id)
-        
         output_path = os.path.join("temp", f"{uuid.uuid4()}_16x9.mkv")
         
-        success = await apply_letterbox(
-            video_path=video_path, 
-            output_path=output_path, 
-            tracker=ffmpeg_tracker,
-            total_duration=duration, 
-            start_time=start_sec,
-            duration=duration
-        )
+        success = await apply_letterbox(video_path=video_path, output_path=output_path, tracker=ffmpeg_tracker, total_duration=duration, start_time=start_sec, duration=duration)
         
         if success:
-            upload_task_id = str(uuid.uuid4())[:8]
-            upload_tracker = ProgressTracker(status_msg, "Yuklanmoqda (Upload)", "16x9_video.mkv", upload_task_id)
-            result = ProgressFSInputFile(output_path, upload_tracker)
-            
-            await status_msg.answer_document(document=result, caption="Videongiz 16:9 formatga muvaffaqiyatli o'tkazildi (Qirqib olingan)! 🎬")
+            await status_msg.edit_text("Fayl Telegramga yuklanmoqda 🚀 (Local API)...")
+            result = types.FSInputFile(output_path)
+            await status_msg.answer_document(document=result, caption="Videongiz 16:9 formatga muvaffaqiyatli o'tkazildi! 🎬")
             await status_msg.delete()
         else:
             await status_msg.edit_text("Xatolik yuz berdi ❌ (Terminalni tekshiring)")
     
     except Exception as e:
-        if CANCEL_TASKS.get(task_id): 
+        if CANCEL_TASKS.get(task_id) or CANCEL_TASKS.get(ffmpeg_task_id): 
             await status_msg.edit_text("Jarayon foydalanuvchi tomonidan bekor qilindi ❌")
         else: 
             await status_msg.edit_text(f"Xatolik yuz berdi: {e}")
-    
     finally:
-        remove_temp_files(video_path, output_path)
-        await state.clear()
+        remove_temp_files(output_path)
+        CANCEL_TASKS.pop(task_id, None)
+        CANCEL_TASKS.pop(ffmpeg_task_id, None)
+        await state.set_state(None)
