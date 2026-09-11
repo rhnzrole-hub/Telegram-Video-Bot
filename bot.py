@@ -4,6 +4,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
 from dotenv import load_dotenv
+
 from handlers.actions import router as actions_router
 from handlers.audio import router as audio_router
 from handlers.metadata import router as metadata_router
@@ -16,8 +17,9 @@ load_dotenv()
 async def main():
     os.makedirs("temp", exist_ok=True)
     
+    # DIQQAT: is_local=True olib tashlandi!
     session = AiohttpSession(
-        api=TelegramAPIServer.from_base("http://localhost:8081", is_local=True)
+        api=TelegramAPIServer.from_base("http://localhost:8081")
     )
     
     bot = Bot(token=os.getenv("BOT_TOKEN"), session=session)
@@ -32,7 +34,7 @@ async def main():
         progress_router
     )
 
-    print("Bot muvaffaqiyatli ishga tushdi (Local API)!")
+    print("Bot muvaffaqiyatli ishga tushdi (Local API HTTP rejimi)!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

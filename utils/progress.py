@@ -1,7 +1,7 @@
 import time
 import aiohttp
 import os
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.exceptions import TelegramBadRequest
 
 CANCEL_TASKS = {}
@@ -74,29 +74,36 @@ async def download_with_progress(bot, file_id, destination, tracker):
     file_path = file.file_path
     total_size = file.file_size
     
-    if os.path.exists(file_path):
-        with open(file_path, 'rb') as src, open(destination, 'wb') as dst:
-            read_bytes = 0
-            while True:
-                if CANCEL_TASKS.get(tracker.task_id): raise Exception("TaskCancelled")
-                chunk = src.read(1024 * 1024)
-                if not chunk: break
-                dst.write(chunk)
-                read_bytes += len(chunk)
-                await tracker.update(read_bytes, total_size)
-        await tracker.update(total_size, total_size, force=True)
-    else:
-        url = f"https://api.telegram.org/file/bot{bot.token}/{file_path}"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                with open(destination, 'wb') as f:
-                    read_bytes = 0
-                    async for chunk in response.content.iter_chunked(1024 * 1024): 
-                        if CANCEL_TASKS.get(tracker.task_id): raise Exception("TaskCancelled")
-                        f.write(chunk)
-                        read_bytes += len(chunk)
-                        await tracker.update(read_bytes, total_size)
-        await tracker.update(total_size, total_size, force=True)
+    # DIQQAT: Faqat o'zimizning Docker serverimizdan (8081) tortamiz!
+    url = f"http://localhost:8081/file/bot{bot.token}/{file_path}"
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            if response.status != 200:
+                raise Exception(f"Yuklab olishda xato: HTTP {response.status}")
+            with open(destination, 'wb') as f:
+                read_bytes = 0
+                async for chunk in response.content.iter_chunked(1024 * 1024): 
+                    if CANCEL_TASKS.get(tracker.task_id): raise Exception("TaskCancelled")
+                    f.write(chunk)
+                    read_bytes += len(chunk)
+                    await tracker.update(read_bytes, total_size)
+    await tracker.update(total_size, total_size, force=True)
+
+class ProgressFSInputFile(FSInputFile):
+    def __init__(self, path, tracker):
+        super().__init__(path, chunk_size=1024 * 1024)
+        self.tracker = tracker
+        self.total_size = os.path.getsize(path)
+
+    async def read(self, bot):
+        read_bytes = 0
+        async for chunk in super().read(bot):
+            if CANCEL_TASKS.get(self.tracker.task_id):
+                raise Exception("TaskCancelled")
+            read_bytes += len(chunk)
+            await self.tracker.update(read_bytes, self.total_size)
+            yield chunk
 
 def format_ffmpeg_progress(filename, action, current_sec, total_sec, start_time):
     if total_sec == 0: total_sec = 1
