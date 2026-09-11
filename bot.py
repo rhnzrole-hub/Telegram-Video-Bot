@@ -8,9 +8,10 @@ from handlers import video, audio, actions, subtitle, metadata, progress
 from config import BOT_TOKEN
 from handlers import video, audio, actions, subtitle, metadata
 
+
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=BOT_TOKEN, base_url="http://localhost:8081", base_file_url="http://localhost:8081/file/bot")
 dp = Dispatcher()
 
 dp.include_router(video.router)

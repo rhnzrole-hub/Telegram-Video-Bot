@@ -62,7 +62,7 @@ async def apply_letterbox(
     start_time: float = 0.0,
     duration: float = None,
     crf: int = 18, 
-    preset: str = "slow"
+    preset: str = "ultrafast"
 ) -> bool:
     
     pad_filter = "pad=ceil(max(iw\\,ih*(16/9))/2)*2:ceil(max(ih\\,iw/(16/9))/2)*2:(ow-iw)/2:(oh-ih)/2:black"
