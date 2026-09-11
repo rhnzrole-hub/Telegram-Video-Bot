@@ -54,28 +54,44 @@ async def apply_multiple_metadata(video_path: str, changes: dict, output_path: s
     await process.communicate()
     return process.returncode == 0
 
-# ---> YANGILANGAN LETTERBOXING <---
 async def apply_letterbox(
     video_path: str, 
     output_path: str, 
     tracker,
     total_duration: float,
+    start_time: float = 0.0,
+    duration: float = None,
     crf: int = 18, 
     preset: str = "slow"
 ) -> bool:
     
     pad_filter = "pad=ceil(max(iw\\,ih*(16/9))/2)*2:ceil(max(ih\\,iw/(16/9))/2)*2:(ow-iw)/2:(oh-ih)/2:black"
     
-    cmd = [
-        "ffmpeg", "-y", "-i", video_path, "-map", "0",
-        "-vf", pad_filter, "-c:v", "libx264", "-preset", preset,
-        "-crf", str(crf), "-profile:v", "high", "-c:a", "copy", "-c:s", "copy",
-        "-progress", "pipe:1",  # Progressni stdout ga chiqaradi
-        "-nostats",             # Oddiy terminal axlatlarini yashiradi
-        output_path
-    ]
+    cmd = ["ffmpeg", "-y", "-i", video_path]
     
-    # DEVNULL qilinishi juda muhim, aks holda bufer to'lib dastur qotib qoladi
+    if start_time > 0:
+        cmd.extend(["-ss", str(start_time)])
+        
+    if duration:
+        cmd.extend(["-t", str(duration)])
+        
+    cmd.extend([
+        "-map", "0",
+        "-vf", pad_filter,
+        "-c:v", "libx264",
+        "-preset", preset,
+        "-crf", str(crf),
+        "-profile:v", "high",
+        "-level", "4.1",
+        "-pix_fmt", "yuv420p",
+        "-threads", "1",
+        "-c:a", "copy", 
+        "-c:s", "copy",
+        "-progress", "pipe:1",
+        "-nostats",
+        output_path
+    ])
+    
     process = await asyncio.create_subprocess_exec(
         *cmd, 
         stdout=asyncio.subprocess.PIPE, 
@@ -83,23 +99,18 @@ async def apply_letterbox(
     )
     
     while True:
-        # Stdout'dan FFmpeg yozayotgan qatorlarni asinxron o'qiymiz
         line = await process.stdout.readline()
         if not line:
             break
             
         line_str = line.decode().strip()
         
-        # FFmpeg har soniyada qancha vaqtni qayta ishlaganini ushlaymiz (microseconds)
         if line_str.startswith("out_time_us="):
             try:
                 out_time_us = int(line_str.split("=")[1])
                 current_seconds = out_time_us / 1000000.0
-                
-                # Tracker orqali Telegramga xabar beramiz
                 await tracker.update_ffmpeg(current_seconds, total_duration)
             except Exception as e:
-                # Agar foydalanuvchi "Bekor qilish" bossa, jarayonni majburiy o'ldiramiz
                 if str(e) == "TaskCancelled":
                     process.terminate()
                     await process.wait()
@@ -107,5 +118,4 @@ async def apply_letterbox(
                 pass
                 
     await process.wait()
-    # Natija majburiy uzilmagan bo'lsa va kod 0 bo'lsa, muvaffaqiyatli
     return process.returncode == 0

@@ -100,16 +100,72 @@ async def action_edit_metadata(callback: types.CallbackQuery, bot: Bot, state: F
     )
 
 @router.callback_query(F.data == "action_letterbox")
-async def action_letterbox(callback: types.CallbackQuery, bot: Bot, state: FSMContext):
+async def ask_letterbox_split(callback: types.CallbackQuery):
+    kb = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="🎞 Butun videoni qayta ishlash", callback_data="lb_process_whole")],
+        [types.InlineKeyboardButton(text="✂️ Vaqt oralig'ida qirqish", callback_data="lb_process_trim")],
+        [types.InlineKeyboardButton(text="❌ Bekor qilish", callback_data="action_cancel")]
+    ])
+    await callback.message.edit_text("Letterboxing jarayoni uchun amalni tanlang 👇", reply_markup=kb)
     await callback.answer()
+
+@router.callback_query(F.data == "lb_process_whole")
+async def process_whole_video(callback: types.CallbackQuery, bot: Bot, state: FSMContext):
+    await callback.answer()
+    status_msg = await callback.message.edit_text("Video tayyorlanmoqda ⏳...")
+    await start_letterbox_task(status_msg, bot, state, 0.0, None)
+
+@router.callback_query(F.data == "lb_process_trim")
+async def ask_trim_time(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(ProcessState.waiting_for_trim_time)
+    text = (
+        "Iltimos, qirqmoqchi bo'lgan vaqt oralig'ingizni kiriting.\n\n"
+        "Format: `Boshlanish_vaqti - Tugash_vaqti` (HH:MM:SS)\n"
+        "Masalan: `00:00:00 - 00:09:09`\n"
+    )
+    await callback.message.edit_text(text, parse_mode="Markdown")
+    await callback.answer()
+
+@router.message(ProcessState.waiting_for_trim_time)
+async def process_trim_time(message: types.Message, bot: Bot, state: FSMContext):
+    text = message.text.strip()
+    try:
+        if "-" not in text:
+            raise ValueError
+            
+        start_str, end_str = text.split("-")
+        
+        def parse_time(t_str):
+            parts = t_str.strip().split(":")
+            if len(parts) == 3:
+                return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+            elif len(parts) == 2:
+                return float(parts[0]) * 60 + float(parts[1])
+            return float(parts[0])
+        
+        start_sec = parse_time(start_str)
+        end_sec = parse_time(end_str)
+        
+        if start_sec >= end_sec:
+            return await message.answer("❌ Tugash vaqti boshlanish vaqtidan katta bo'lishi kerak. Qaytadan kiriting:")
+        
+        duration = end_sec - start_sec
+        await state.set_state(None)
+        
+        status_msg = await message.answer("Vaqt qabul qilindi ✅ Video tayyorlanmoqda ⏳...")
+        await start_letterbox_task(status_msg, bot, state, start_sec, duration)
+        
+    except Exception:
+        await message.answer("❌ Xato format! Iltimos, `00:00:00 - 00:09:09` formatida kiriting.")
+
+async def start_letterbox_task(status_msg: types.Message, bot: Bot, state: FSMContext, start_sec: float, duration: float = None):
     data = await state.get_data()
     video_file_id = data.get("video_file_id")
     video_path = data.get("video_path")
 
     if not video_file_id:
-        return await callback.message.edit_text("Video topilmadi.")
+        return await status_msg.edit_text("Video topilmadi.")
 
-    status_msg = await callback.message.edit_text("Video tayyorlanmoqda ⏳...")
     task_id = str(uuid.uuid4())[:8]
     output_path = None
 
@@ -117,10 +173,12 @@ async def action_letterbox(callback: types.CallbackQuery, bot: Bot, state: FSMCo
         video_path = await download_video_if_needed(bot, video_file_id, video_path, state, status_msg, task_id)
         
         await status_msg.edit_text("Videoning davomiyligi aniqlanmoqda ⏳...")
-        total_duration = await get_video_duration(video_path)
         
+        if duration is None:
+            duration = await get_video_duration(video_path)
+            
         ffmpeg_task_id = str(uuid.uuid4())[:8]
-        ffmpeg_tracker = ProgressTracker(status_msg, "Qayta ishlanmoqda (Letterbox)", "video", ffmpeg_task_id)
+        ffmpeg_tracker = ProgressTracker(status_msg, "Qayta ishlanmoqda (Letterbox)", "video.mkv", ffmpeg_task_id)
         
         output_path = os.path.join("temp", f"{uuid.uuid4()}_16x9.mkv")
         
@@ -128,7 +186,9 @@ async def action_letterbox(callback: types.CallbackQuery, bot: Bot, state: FSMCo
             video_path=video_path, 
             output_path=output_path, 
             tracker=ffmpeg_tracker,
-            total_duration=total_duration
+            total_duration=duration, 
+            start_time=start_sec,
+            duration=duration
         )
         
         if success:
@@ -136,17 +196,17 @@ async def action_letterbox(callback: types.CallbackQuery, bot: Bot, state: FSMCo
             upload_tracker = ProgressTracker(status_msg, "Yuklanmoqda (Upload)", "16x9_video.mkv", upload_task_id)
             result = ProgressFSInputFile(output_path, upload_tracker)
             
-            await callback.message.answer_document(document=result, caption="Videongiz 16:9 formatga muvaffaqiyatli o'tkazildi! 🎬")
+            await status_msg.answer_document(document=result, caption="Videongiz 16:9 formatga muvaffaqiyatli o'tkazildi (Qirqib olingan)! 🎬")
             await status_msg.delete()
         else:
-            await status_msg.edit_text("Letterboxing jarayonida xatolik yuz berdi ❌ (Terminalni tekshiring)")
-            
+            await status_msg.edit_text("Xatolik yuz berdi ❌ (Terminalni tekshiring)")
+    
     except Exception as e:
-        if CANCEL_TASKS.get(task_id) or CANCEL_TASKS.get(ffmpeg_task_id) or CANCEL_TASKS.get(upload_task_id, False): 
+        if CANCEL_TASKS.get(task_id): 
             await status_msg.edit_text("Jarayon foydalanuvchi tomonidan bekor qilindi ❌")
         else: 
             await status_msg.edit_text(f"Xatolik yuz berdi: {e}")
-            
+    
     finally:
         remove_temp_files(video_path, output_path)
         await state.clear()
