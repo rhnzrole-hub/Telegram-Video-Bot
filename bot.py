@@ -17,7 +17,7 @@ load_dotenv()
 async def main():
     # 2 GB limitni yechish uchun Local Server sozlamasi
     session = AiohttpSession(
-        api=TelegramAPIServer.from_base("http://localhost:8081")
+        api=TelegramAPIServer.from_base("http://localhost:8081", is_local=True)
     )
     
     # Botni ishga tushirish (Local Server orqali)
